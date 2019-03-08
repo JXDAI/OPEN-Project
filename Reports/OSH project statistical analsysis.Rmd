@@ -1,0 +1,391 @@
+---
+title: "OPEN! Web mining part 2"
+author: "Jason Xinghang DAI"
+date: "04/10/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+# Previously 
+1. 9 types of tools were identified: social media, wiki, forum, blog, github, live chat, discussion, wevolver and thingiverse. 
+2. Data of OSPD Projects  with OOM ranging from 8 to 5 were collected.  
+3. Preliminary data exploration with tabular data summary. 
+4. Four hypotheses were defined: 
+    a. **Tools used in an OSPD project that preveliges textual data exhange will decrease as its OOM decreases, in terms of volume and variety.** 
+    b. Most of the followers on social media do not contribute to OSPD product development through social media. 
+    c. Most of the Git hub collaboration is about software design.  
+    d. Forum collaboration is more important than other types of tools in terms of numbers of participants.
+
+# Present 
+The data base is complete! We have 226 OSPD projects with an average OOM of 4.26. They are stored separately according to their OOM. 
+We are going to continue prove our first hypothesis: 
+Tools used in an OSPD project that preveliges textual data exchange will decrease as its OOM decreases, in terms of quantity and variety.
+**First let's examine the quantity. **
+
+## Computation and exploratory analysis 
+Libraries used for this analysis 
+```{r library}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+```
+Import data 
+```{r import}
+#setwd("./dropbox/G-soop/WIKI mining")
+data <- read.csv("OSPD.csv", header = TRUE, sep = ";", colClasses = "character")
+data1 <- as_tibble(data)
+```
+The data needs to be merged and transformed, OOM will be transformed into factors, and tool matrix will be built with only "0" and "1". 
+```{r transformation}
+# make it into a numeric matrix 
+dat <- data1[,2:10]
+dat[dat != "0"] <- "1"
+# tranform data types into numeric, and factor 
+dat <- as.data.frame(sapply(dat, as.numeric))
+# put names and OOM into the data frame 
+dat <- mutate(dat, names = data[,1], OOM = data[,11])
+dat[,11] <- as.factor(dat[,11])
+```
+
+## General analysis 
+First we are going to explore how the projects are distributed according to OOM, and how the tools are used generally. 
+Let's build a matrix for this 
+```{r general}
+# general distribuion of tools 
+tool_dis <- as.data.frame(round(colSums(dat[,1:9])/nrow(dat), digits = 2))
+tool_dis <- mutate(tool_dis, Tool = rownames(tool_dis))
+names(tool_dis) <- c("Propotion", "Tool")
+tool_dis <- tool_dis[,2:1]
+```
+We can visualize the distribution of tool usage of all the projects in a pie chart 
+```{r pie}
+# Plot a pie chart of this distribution 
+p_tool_dis <- ggplot(tool_dis, aes(x = "", y = Propotion, fill = Tool)) + 
+    geom_bar(width = 1, stat = "identity") +
+    coord_polar("y", start = 0) +
+    scale_fill_brewer(palette = "Blues") +
+    theme_minimal() +
+    geom_text(aes(label = percent(Propotion)), position = position_stack(vjust = 0.5))
+p_tool_dis
+```
+
+Let's group the data according to OOM, and calculate the mean of each tool usage. Since the "1" indicate a certain tool is used and "0" the otherwise, the mean of a column in a matrix indicate the proportion of that tool usage among projects with the same OOM, in other words, the number of projects using this tool is normalized with the total number of projects with the same OOM. 
+```{r group}
+# group_by the OOM
+dat_group <- group_by(dat, OOM)
+summary <- summarise(dat_group, 
+                     social_media = round(mean(Facebook.twitter), digits = 2),
+                     Wiki = round(mean(Wiki), digits = 2),
+                     Forum = round(mean(Forum), digits = 2),
+                     Blog = round(mean(Blog), digits = 2),
+                     Github = round(mean(Github_text), digits = 2),
+                     Live_chat = round(mean(Live.chat), digits = 2),
+                     Discussion = round(mean(Discussion), digits = 2),
+                     Wevolver = round(mean(Wevolver), digits = 2),
+                     Thingiverse = round(mean(Thingiverse), digits = 2),
+                     count = n())
+```
+First, let's look at how many projects do we have in the database, and how they are distributed according to OOM
+```{r whole}
+# number of projects according to OOM 
+p_general <- ggplot(data = summary) + 
+    geom_bar(aes(x = OOM, y = count, fill = OOM), stat = "identity") + 
+    labs(title = "OSPD project distribution according to OOM", x = "OOM", y = "Number of projects") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = count, label = count), vjust = 1.6)
+p_general
+```
+It's almost Gaussian! coincidence? 
+
+## Analysis according to OOM, vertical analysis 
+In this tabular data, we can analyse the data vertically, according to the OOM, in other words, we'll focus on the evolution of column data. On the other hand, we could explore how the variety of tools evolve according to OOM, which will be our horizontal analysis. 
+
+Now let's look at the usage of each tool 
+
+### social media 
+```{r social media }
+# Social media according to OOM
+p_social_media <- ggplot(data = summary, aes(x = OOM, y = social_media, fill = OOM)) +
+    geom_bar(stat = "identity") + 
+    labs(title = "Social media distribution according to OOM", x = "OOM", y = "Propotion of social media usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = social_media, label = social_media), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[1,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[1,2] + 0.018, label = "mean")
+p_social_media
+```
+
+### Wiki
+```{r wiki}
+# Wiki distribution 
+p_wiki <- ggplot(data = summary, aes(x = OOM, y = Wiki, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Wiki distribution according to OOM", x = "OOM", y = "Propotion of Wiki usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Wiki, label = Wiki), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[2,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[2,2] + 0.018, label = "mean")
+p_wiki
+```
+
+### Forum
+```{r forum}
+# Forum distribution 
+p_forum <- ggplot(data = summary, aes(x = OOM, y = Forum, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Forum distribution according to OOM", x = "OOM", y = "Propotion of Forum usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Forum, label = Forum), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[3,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[3,2] + 0.018, label = "mean")
+p_forum
+```
+
+### Blog
+```{r blog}
+# Blog distribution 
+p_blog <- ggplot(data = summary, aes(x = OOM, y = Blog, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Blog distribution according to OOM", x = "OOM", y = "Propotion of Blog usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Blog, label = Blog), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[4,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[4,2] + 0.018, label = "mean")
+p_blog
+```
+
+### Github 
+```{r github}
+# Github distribution 
+p_github <-  ggplot(data = summary, aes(x = OOM, y = Github, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Github distribution according to OOM", x = "OOM", y = "Propotion of Github usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Github, label = Github), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[5,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[5,2] + 0.018, label = "mean")
+p_github
+```
+
+### Live chat
+```{r live_chat}
+# live chat distribution 
+p_live_chat <- ggplot(data = summary, aes(x = OOM, y = Live_chat, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Live chat distribution according to OOM", x = "OOM", y = "Propotion of Live chat usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Live_chat, label = Live_chat), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[6,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[6,2] + 0.018, label = "mean")
+p_live_chat
+```
+
+### Discussion
+```{r discussion}
+# Discussion distribution 
+p_discussion <- ggplot(data = summary, aes(x = OOM, y = Discussion, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Discussion distribution according to OOM", x = "OOM", y = "Propotion of Discussion usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Discussion, label = Discussion), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[7,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[7,2] + 0.018, label = "mean")
+p_discussion
+```
+
+### Wevolver
+```{r wevolver}
+# Wevolver distribution 
+p_wevolver <- ggplot(data = summary, aes(x = OOM, y = Wevolver, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Wevolver distribution according to OOM", x = "OOM", y = "Propotion of Wevolver usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Wevolver, label = Wevolver), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[8,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[8,2] + 0.018, label = "mean")
+p_wevolver
+```
+
+### Thingiverse
+```{r thingiverse}
+# Thingiverse distribution 
+p_thingiverse <- ggplot(data = summary, aes(x = OOM, y = Thingiverse, fill = OOM)) + 
+    geom_bar(stat = "identity") + 
+    labs(title = "Thingiverse distribution according to OOM", x = "OOM", y = "Propotion of Thingiverse usage") + 
+    scale_fill_brewer(palette = "Blues") + 
+    geom_text(aes(x = OOM, y = Thingiverse, label = Thingiverse), vjust = 1.6) +
+    geom_line(stat = "identity", group = 1, color = "orange", size = 1.5) + 
+    geom_point() +
+    geom_hline(yintercept = tool_dis[9,2], linetype = "dashed", color = "blue") +
+    annotate("text", x = 0.9, y = tool_dis[9,2] + 0.018, label = "mean")
+```
+
+Now let's plot them all together to compare tool usage. 
+First gather all the data, put value into Proportion, keep OOM, and use tool names as keys 
+```{r gather}
+all <- gather(summary[,-11], 
+              key = "Tool", 
+              value = "Propotion", 
+              2:10,  
+              factor_key = TRUE )
+```
+Now let's look at the line chart all together 
+```{r allplot}
+p_all <- ggplot(all, aes(x = OOM, y = Propotion)) + 
+    geom_line(aes(color = Tool), size = 1, group = all$Tool) + 
+    geom_point(shape = all$Tool) + 
+    scale_colour_brewer(palette = "Set1")
+p_all 
+```
+It's pretty messy isn't? but if we zoom in to each line, there are certain patterns. 
+Now let's plot each line into a different facet but with the same Ylab, and we use a simple linear regression line to see how the data evolves generally. 
+```{r allfacetplot}
+p_all_grid <- ggplot(all, aes(x = OOM, y = Propotion)) + 
+    geom_point(shape = all$Tool) + 
+    scale_colour_brewer(palette = "Set1") +
+    facet_grid(all$Tool ~ .) +
+    geom_smooth(method = lm, se = FALSE, size = 0.5)
+p_all_grid
+```
+Some tool usage clearly have a pattern when the OOM changes, what does it mean? are certain tools more important for OSPD then the others? or more interesting, can we define the OOM automatically simply by the tools they used? 
+
+### Playing with *machine learning model*
+```{r caret}
+library(caret)
+```
+We are going to maximize our accuracy by using leave one out cross validation, since linear relationships were detected between the features and outcomes, we'll try with linear discriminant analysis first. Then we'll use tree models. 
+
+LDA model 
+```{r machinelearning}
+set.seed(3)
+index <- createDataPartition(dat[,-10]$OOM, p = 0.95, list = FALSE)
+trainset <- dat[index,-10]
+testset <- dat[-index, -10]
+
+control <- trainControl(method = "LOOCV")
+fit.lda <- train(OOM ~ ., trainset, method = "lda",
+                   trControl = control, 
+                   preProc = c("center", "scale"))
+fit.lda$results
+```
+Catastrophic!
+Let's try another algorithm more robust. 
+Random forest tree model 
+```{r randomforest}
+set.seed(3)
+index <- createDataPartition(dat[,-10]$OOM, p = 0.95, list = FALSE)
+trainset <- dat[index,-10]
+testset <- dat[-index, -10]
+
+control <- trainControl(method = "LOOCV")
+fit.rf <- train(OOM ~ ., trainset, method = "rf",
+                   trControl = control, 
+                   preProc = c("center", "scale"))
+fit.rf$results
+```
+The results are not very good. 
+
+I guess we have to just content our self with the general statistical patterns that we have found for now. If there are more projects, with more relevant features, maybe we could possibly build a automatic classifier. 
+
+**now let's prove the second part of hypothesis 1, variety** 
+
+## Horizontal analysis, compare tool variety 
+For each project, we'll calculate the number of different tools used, this number will represent the variety of tools used. Then mean of tool variety will be calculate according to OOM. Our hypothesis is that the tool variety will decrease according to OOM. 
+Now let's add a column of "variety" into the data. 
+```{r varietydata}
+dat_variety <- mutate(dat, variety = rowSums(dat[,1:9]))
+dat_group_variety <- group_by(dat_variety, OOM)
+tool_variety <- summarise(dat_group_variety, variety = mean(variety))
+```
+Let's see if there is a trend with a line plot 
+```{r varietyplot}
+p_variety <- ggplot(tool_variety, aes(x = OOM, y = variety)) + 
+    geom_point() + 
+    geom_line(group = 1, colour = "blue") 
+p_variety
+```
+It's very evident that there is a decreasing trend of variety with OOM going down. 
+
+# Therefore, with trend of data shown above, we draw the conclusion that our first hypothesis is true. 
+
+```{r FactortoNumeric}
+summary_num <- summary 
+summary_num$OOM <- as.numeric(summary_num$OOM)
+```
+# Detailed comparison 
+now let's see if there are staticially significant differences between these tools 
+
+Social media 
+```{r stat_social_media}
+fit_social_media <- lm(social_media ~ OOM, data = summary_num)
+fit_social_media$coefficients
+anova(fit_social_media)
+```
+Wiki
+```{r stat_wiki}
+fit_wiki <- lm(Wiki ~ OOM, data = summary_num)
+fit_wiki$coefficients
+anova(fit_wiki)
+```
+Forum
+```{r stat_forum}
+fit_forum <- lm(Forum ~ OOM, data = summary_num)
+fit_forum$coefficients
+anova(fit_forum)
+```
+Blog
+```{r stat_blog}
+fit_blog <- lm(Blog ~ OOM, data = summary_num)
+fit_blog$coefficients
+anova(fit_blog)
+```
+Github
+```{r stat_github}
+fit_github <- lm(Github ~ OOM, data = summary_num)
+fit_github$coefficients
+anova(fit_github)
+```
+Live chat
+```{r stat_live_chat}
+fit_livechat <- lm(Live_chat ~ OOM, data = summary_num)
+fit_livechat$coefficients
+anova(fit_livechat)
+```
+Discussion
+```{r stat_discussion}
+fit_discussion <- lm(Discussion ~ OOM, data = summary_num)
+fit_discussion$coefficients
+anova(fit_discussion)
+```
+wevolver
+```{r stat_wevolver}
+fit_wevolver <- lm(Wevolver ~ OOM, data = summary_num)
+fit_wevolver$coefficients
+anova(fit_wevolver)
+```
+Thingiverse
+```{r stat_Thingiverse}
+fit_thingiverse <- lm(Thingiverse ~ OOM, data = summary_num)
+fit_thingiverse$coefficients
+anova(fit_thingiverse)
+```
+the P-value indicate how significant the two variables are correlated, p<0.05 usually conclude statistical significance therefore we have Github, livechat, forum, social media, wiki and blog. These rest of the features are not statistically significant. But github and forum are among them the two dominant factors with a P value less than 0.001, and relatively high F score. 

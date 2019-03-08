@@ -1,0 +1,236 @@
+---
+title: "Text mining of OSPD project twitter account"
+author: "Jason Xinghang DAI"
+date: "25/10/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+# Previously 
+1. 9 types of tools were identified: social media, wiki, forum, blog, github, live chat, discussion, wevolver and thingiverse. 
+2. Data of OSPD Projects  with OOM ranging from 8 to 5 were collected.  
+3. Preliminary data exploration with tabular data summary. 
+4. Four hypotheses were defined: 
+    a. Tools used in an OSPD project that preveliges textual data exhange will decrease as its OOM decreases, in terms of number and variety.
+    b. Most of the followers on social media do not contribute to OSPD product development through social media. 
+    c. Most of the Git hub collaboration is about software design.  
+    d. Forum collaboration is more important than other types of tools in terms of numbers of participants.
+    
+## What has been proved? 
+The first hypothesis is proved to be true in general. We have found the the tools they used in OSPD project to exchange textual data decreses as OOM decreses, in terms of number and variety, and a t-test showed that the most influential tools are Github and Forum, with a P-value < 0.001. 
+
+## What's on the menu today? 
+Now, we want to look into the content of the textual data they exchanged on different platforms. In our hypotheses, we have social media, github and forum. We are going to begin with social media first, since I want to make a connection to the work of Gilles. His analysis on OSPD project organization concluded that in spite the large community of OSPD social media followers, they are simply observers that are not involved in the development of OSPD product. In order to prove this, we are going to dig into the social media account of each OSPD project. 
+
+## What we are going to examine? 
+1. Who are the folloers? We are going to calculate the numbers of followers, identify lead follwers, intentify their interests by clustering their twitter account profile descriptions. We want to first prove that lead follwers are those who interact the most with OSPD twitter account. 
+2. What are the status of OSPD tweets? There are three status of a tweet, like, retweet and reply. First we want to see how are these status, then we want to focus on the reply status. Are the replies from twitter followers? if yes, who are they, and what topic are they talking about, is it related to OSPD developmemt? if yes, how they are related, are they somehow contributing to the ideation of a OSPD product or they are giving feedbacks as a user to improve maintenance, recyling etc.? 
+
+# Case study on the OSPD project KORUZA
+## Twitter account: institute_irnas
+import the libraries 
+```{r}
+library(twitteR) # twitter API mining 
+library(tidyverse)
+library(tidytext) # text cleaning 
+library(tm)
+library(dplyr)
+library(wordcloud) 
+library(SnowballC) # stop words
+library(topicmodels) #LDA
+```
+Before we do any twitter API scrapping, we need to create a developer account on twitter. The we can obtain access to twitter API. This access allows a developer to access other people's twitter's information without using their passwords. 
+Here is the keys I obtained from my own developper account: 
+```{r}
+consumer_key <- "3gGi0LPPT7vX3DHMm6yrNXSmF"
+consumer_secret<- "7DHK1jv72UVMZov5E4hTfZhKivC45OtVfrAcnFcOfcDX5mEc8A"
+access_token <- "976013431395569664-lCivXetBT0X4pak8HVJMtdLUSPzcg3P"
+access_secret <- "nxVGanyiLWRSCUIFP5mvv7AQ7jKrbE2We4c6NgP3hwX5I"
+```
+set up the connection 
+```{r}
+setup_twitter_oauth(consumer_key ,consumer_secret,access_token ,access_secret)
+```
+Extract twitter data, the API allows us to obtain 3200 tweets each time, this is usually sufficient. 
+```{r}
+tweets <- userTimeline("institute_irnas", n = 3200)
+length(tweets)
+```
+In the tweets, we have tweets of the OSPD project account, also it's RT, we have to get rid of them 
+```{r}
+tweet_noRT <- strip_retweets(tweets)
+length(tweet_noRT)
+```
+The number of tweets with no RT should be fewer than the origninal timeline tweets
+
+## Followers, friends and users 
+In twitter, you can follow anyone, but the people you followed may not foolow you back. 
+Followers: people who followed the OSPD account
+Friedns: people who are followed by the OSPD account
+Users: all the people who have a twitter a account 
+
+Scrap all the information about the OSPD account 
+```{r}
+user <- getUser("institute_irnas")
+```
+Scrap the followers and friends of the OSPD account 
+```{r}
+friends <- user$getFriends() # who this user follows
+friends_df <- twListToDF(friends) %>%
+    rownames_to_column()
+followers <- user$getFollowers() # the followers of this user
+followers_df <- twListToDF(followers) %>%
+    rownames_to_column()
+```
+Now let's extract information about the friends' friends 
+```{r eval = FALSE, echo = FALSE}
+for (i in 1:length(friends)) {
+    friends2 <- friends[[i]]$getFriends() # my friends' friends
+    friends2_df <- twListToDF(friends2) %>%
+        rownames_to_column() %>%
+        mutate(friend = as.character(friends[[i]]$id))
+    
+    if (i == 1) {
+        friends2_df_final <- friends2_df
+    } else {
+        friends2_df_final <- rbind(friends2_df_final, friends2_df)
+    }
+    print(i)
+}
+```
+
+Now let's build a database of all the friends and followers of the OSPD account
+```{r}
+friends_followers_df <- rbind(mutate(followers_df, type = ifelse(screenName %in% friends_df$screenName, "friend & follower", "follower")),
+                              mutate(friends_df, type = ifelse(screenName %in% followers_df$screenName, "friend & follower", "friend"))) %>%
+    unique()
+summary(as.factor(friends_followers_df$type))
+```
+### What languages do they speak ? 
+Here we plot the top 10 spoken languages among the users and followers 
+```{r}
+friends_followers_df %>%
+    group_by(type) %>%
+    count(lang) %>%
+    top_n(10) %>%
+    droplevels() %>%
+    ggplot(aes(x = reorder(lang, desc(n)), y = n)) +
+    facet_grid(type ~ ., scales = "free") +
+    geom_bar(stat = "identity", color = "#377F97", fill = "#377F97", alpha = 0.8) +
+    theme_bw() +
+    theme(strip.background=element_rect(fill = "#4A9888")) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+    labs(x = "language ISO 639-1 code",
+         y = "number of friends / followers",
+         title = "Top 10 languages of friends and followers",
+         caption = expression("Twitter friends and followers of @institute_irnas"))
+```
+This visualization will give us the information the language they use in this community, if this is english we can continue this analysis with the english language processing packages, but if this is another language we need to make adjustments accordingly. 
+
+### Top followers 
+
+When we analyse followers, usually we begin with top followers. The top followers are defined as those who have the most follwers themselves, and have a hgh frequency of status update(RT, T, Reply, Like etc.)
+```{r}
+top_fol2 <- followers_df %>%
+    mutate(date = as.Date(created, format = "%Y-%m-%d"),
+           today = as.Date("2017-06-07", format = "%Y-%m-%d"),
+           days = as.numeric(today - date),
+           statusesCount_pDay = statusesCount / days) %>%
+    select(screenName, followersCount, statusesCount_pDay) %>%
+    mutate(score = followersCount * statusesCount_pDay) %>% # a score indicating the number of their followers as well as daily updates 
+    arrange(desc(score)) %>%
+    .[1:100, ]
+
+top_fol_tweet2 <- top_fol2 %>%
+    left_join(select(followers_df, screenName, description), by = "screenName") %>%
+    mutate(id = seq_along(1:n()))
+```
+By doing this we have a databased with top 100 followers, with their screen name ans their profile description. 
+
+### What are the top followers' interests 
+In this analysis, we want to see what kind of people followe this OSPD project account.The simplest and most reliable way of doing so is to look into the profile descriptions of theose followers, and do a text mining analysis. Let's go. 
+
+Build a corpus of user's profile description 
+```{r}
+Corpus_des <- Corpus(VectorSource(top_fol_tweet2$description))
+```
+
+**twitter text data clearning** is a fastidious task, we have to identify what kind of messy information does it contain. First, there are many URLs, we need to get rid of it. Then emojis, symbols, etc. We can also try to correct misspelled words, and try to find slangs. Here we are going to a text cleaning:
+```{r}
+#tranform to lower case 
+Corpus_des <- tm_map(Corpus_des, content_transformer(tolower))
+# remove URLs
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+Corpus_des<- tm_map(Corpus_des, content_transformer(removeURL))
+
+# remove anything other than English letters or space 
+removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*", "", x) 
+Corpus_des <- tm_map(Corpus_des, content_transformer(removeNumPunct))
+
+# remove stop words or even user defined words 
+Corpus_des <- tm_map(Corpus_des, removeWords, stopwords('english'))
+
+# strip extra whitespace 
+Corpus_des <- tm_map(Corpus_des, stripWhitespace)
+
+# stem the document 
+Corpus_des <- tm_map(Corpus_des, stemDocument)
+```
+The tasks of text cleaning we did here includes: lower case, URL removal, symbols/emoji/extra white sapce removal, english stop words removal (a, the, of etc.), word stemming (doing => do, maker => make etc.)
+*this is a work in progress, we need to find more ways to further preprocess twitter text data*
+
+Now we have the relatively clean database, we have to do text data transformation. We need to contruct document term matixes. A document will be a single user's profile description , and the terms will be the cleaned textual data of that user's profile description. 
+
+```{r}
+tdm <- TermDocumentMatrix(Corpus_des, control = list(wordLengths = c(1, Inf)))
+```
+
+Now let's look examine the word frequency
+```{r}
+findFreqTerms(tdm, lowfreq = 10)
+```
+
+Now we can have a wordcloud to see the most frequent terms used as the descriptions of the users
+```{r}
+# the result will give us some idea about what is the cut-off point of our frequency limit 
+# now we can really calculate the exact number of these terms by summing up the row numbers of tdm 
+# let's lower the limit of our frequency in order to have more result 
+term.freq <- rowSums(as.matrix(tdm))
+term.freq <- subset(term.freq, term.freq > 5)
+term.freq
+# word cloud
+word.freq <- sort(rowSums(as.matrix(tdm)), decreasing = T)
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = 5)
+```
+
+## what are the tweets of OSPD projects about? 
+First, let's build the corpus and document term matrix of tweets. 
+```{r}
+tweets.df <- twListToDF(tweets)
+r_stats_text_corpus <- Corpus(VectorSource(tweets.df$text))
+```
+
+clean the data 
+```{r}
+r_stats_text_corpus <- tm_map(r_stats_text_corpus, content_transformer(removeURL))
+r_stats_text_corpus <- tm_map(r_stats_text_corpus, content_transformer(tolower)) 
+r_stats_text_corpus <- tm_map(r_stats_text_corpus, content_transformer(removeNumPunct))
+r_stats_text_corpus <- tm_map(r_stats_text_corpus, removeWords, stopwords('english'))
+r_stats_text_corpus <- tm_map(r_stats_text_corpus, stemDocument)
+```
+
+Now let's build word frequency table 
+```{r}
+# build a term document matrix 
+tdm2 <- TermDocumentMatrix(r_stats_text_corpus)
+findFreqTerms(tdm2, lowfreq = 10)
+# this result more or less gives us what are these tweets are about 
+# apparently they are talking a lot about IOT, opensource and development etc 
+# let's look at the topics of these tweets with LDA 
+# first let's transpose the tdm into a dtm 
+dtm2 <- as.DocumentTermMatrix(tdm2)
+lda <- LDA(dtm2, k = 8)
+term <- terms(lda, 7)
+```
